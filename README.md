@@ -4,7 +4,7 @@ A component that automatically detects the domain of a given text which can be u
 
 The model is a fine-tuned version of XLM-RoBERTa which is a large multi-lingual language model created by Facebook AI. We use model version available in [HuggingFace](https://huggingface.co/transformers/model_doc/xlmroberta.html).
 
-TODO: reference to training code.
+Training scripts are available [here](https://github.com/Project-MTee/domain-detection-scripts).
 
 ## Setup
 
