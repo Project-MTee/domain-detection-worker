@@ -5,7 +5,6 @@ languages:
   - de
 parameters:
   checkpoint_path: models/domain-detection-model
-  tokenizer_path: models/tokenizer
   labels:
     0: general
     1: crisis

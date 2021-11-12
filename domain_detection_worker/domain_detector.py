@@ -12,11 +12,10 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 class DomainDetector:
 
-    def __init__(self, labels: dict, checkpoint_path: str = "models/domain-detection-model", tokenizer_path: str =
-    "models/tokenizer"):
+    def __init__(self, labels: dict, checkpoint_path: str = "models/domain-detection-model"):
         self.labels = labels
         self.model = self._get_model(checkpoint_path)
-        self.tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base", cache_dir=tokenizer_path)
+        self.tokenizer = AutoTokenizer.from_pretrained(checkpoint_path)
 
     def _get_model(self, checkpoint_path: str):
         model = XLMRobertaForSequenceClassification.from_pretrained(checkpoint_path)
@@ -36,7 +35,7 @@ class DomainDetector:
         return sentences
 
     def predict(self, sentences: list) -> str:
-        tokenized_sents = self.tokenizer(sentences, return_tensors="pt", truncation=True, padding='max_length', max_length=256)
+        tokenized_sents = self.tokenizer(sentences, return_tensors="pt", truncation=True, padding=True, max_length=256)
         tokenized_sents.to(DEVICE)
         
         predictions = self.model(**tokenized_sents)
