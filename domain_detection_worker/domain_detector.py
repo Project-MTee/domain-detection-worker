@@ -4,24 +4,24 @@ import torch
 import numpy as np
 from nltk import sent_tokenize
 
-from .utils import Response, Request
+from .config import ModelConfig
+from .schemas import Response, Request
 
-logger = logging.getLogger("domain_detection")
+logger = logging.getLogger(__name__)
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
+
 class DomainDetector:
 
-    def __init__(self, labels: dict, checkpoint_path: str = "models/domain-detection-model"):
-        self.labels = labels
-        self.model = self._get_model(checkpoint_path)
-        self.tokenizer = AutoTokenizer.from_pretrained(checkpoint_path)
+    def __init__(self, model_config: ModelConfig):
+        self.model_config = model_config
 
-    def _get_model(self, checkpoint_path: str):
-        model = XLMRobertaForSequenceClassification.from_pretrained(checkpoint_path)
-        model.to(DEVICE)
-        model.eval()
-        return model
+        self.model = XLMRobertaForSequenceClassification.from_pretrained(self.model_config.checkpoint_dir)
+        self.model.to(DEVICE)
+        self.model.eval()
+
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_config.checkpoint_dir)
 
     @staticmethod
     def _sentence_tokenize(text: str) -> list:
@@ -35,7 +35,11 @@ class DomainDetector:
         return sentences
 
     def predict(self, sentences: list) -> str:
-        tokenized_sents = self.tokenizer(sentences, return_tensors="pt", truncation=True, padding=True, max_length=256)
+        tokenized_sents = self.tokenizer(sentences,
+                                         return_tensors="pt",
+                                         truncation=True,
+                                         padding='max_length',
+                                         max_length=256)
         tokenized_sents.to(DEVICE)
         
         predictions = self.model(**tokenized_sents)
@@ -43,11 +47,11 @@ class DomainDetector:
 
         counts = np.bincount(predictions)
 
-        return self.labels[np.argmax(counts)]
+        return self.model_config.labels[np.argmax(counts)]
 
     def process_request(self, request: Request) -> Response:
         if type(request.text) == str:
-            sentences = [request.text]
+            sentences = [self._sentence_tokenize(request.text)]
         else:
             sentences = [sentence for text in request.text for sentence in self._sentence_tokenize(text)]
         domain = self.predict(sentences)

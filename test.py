@@ -1,14 +1,10 @@
 import unittest
-import yaml
-from yaml.loader import SafeLoader
 
-from domain_detection_worker.domain_detector import DomainDetector
-from domain_detection_worker.utils import Response, Request
+from domain_detection_worker import DomainDetector, read_model_config
+from domain_detection_worker.schemas import Response, Request
 
-with open('config/config.yaml', 'r', encoding='utf-8') as f:
-    config = yaml.load(f, Loader=SafeLoader)
-
-domain_detector = DomainDetector(**config['parameters'])
+model_config = read_model_config('models/config.yaml')
+domain_detector = DomainDetector(model_config)
 
 
 class DomainDetectionTests(unittest.TestCase):
@@ -19,7 +15,7 @@ class DomainDetectionTests(unittest.TestCase):
         text = ["Eesti on iseseisev ja sõltumatu demokraatlik vabariik, kus kõrgeima riigivõimu kandja on rahvas.",
                 "Eesti iseseisvus ja sõltumatus on aegumatu ning võõrandamatu."]
         prediction = domain_detector.predict(text)
-        self.assertIn(prediction, config['parameters']["labels"].values())
+        self.assertIn(prediction, domain_detector.model_config.labels.values())
 
     def test_request_response(self):
         """

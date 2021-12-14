@@ -3,39 +3,37 @@ import logging
 from sys import getsizeof
 from time import time, sleep
 
-from typing import List
-
 import pika
 import pika.exceptions
+from pika import credentials, BlockingConnection, ConnectionParameters
 
-from .utils import Response, Request, RequestSchema
-from .domain_detector import DomainDetector
+from domain_detection_worker.schemas import Response, Request
+from domain_detection_worker.domain_detector import DomainDetector
+from domain_detection_worker.config import MQConfig
 
-LOGGER = logging.getLogger("domain_detection")
+logger = logging.getLogger(__name__)
 
 
 class MQConsumer:
-    def __init__(self, domain_detector: DomainDetector,
-                 connection_parameters: pika.connection.ConnectionParameters,
-                 exchange_name: str,
-                 routing_keys: List[str]):
+    def __init__(self, domain_detector: DomainDetector, mq_config: MQConfig):
         """
         Initializes a RabbitMQ consumer class that listens for requests for a specific worker and responds to
         them.
-
-        :param domain_detector: A domain_detector instance to be used.
-        :param connection_parameters: RabbitMQ connection_parameters parameters.
-        :param exchange_name: RabbitMQ exchange name.
-        :param routing_keys: RabbitMQ routing keys. The actual queue name will also automatically include the exchange
-        name to ensure that unique queues names are used.
         """
+        self.mq_config = mq_config
         self.domain_detector = domain_detector
-
-        self.exchange_name = exchange_name
-        self.routing_keys = sorted(routing_keys)
-        self.queue_name = self.routing_keys[0]
-        self.connection_parameters = connection_parameters
+        self.routing_keys = []
+        self.queue_name = None
         self.channel = None
+
+        self._generate_queue_config()
+
+    def _generate_queue_config(self):
+        routing_keys = []
+        for language in self.domain_detector.model_config.languages:
+            routing_keys.append(f'{self.mq_config.exchange}.{language}')
+        self.routing_keys = sorted(routing_keys)
+        self.queue_name = self.mq_config.exchange  # TODO languages hash
 
     def start(self):
         """
@@ -45,14 +43,14 @@ class MQConsumer:
         while True:
             try:
                 self._connect()
-                LOGGER.info('Ready to process requests.')
+                logger.info('Ready to process requests.')
                 self.channel.start_consuming()
             except pika.exceptions.AMQPConnectionError as e:
-                LOGGER.error(e)
-                LOGGER.info('Trying to reconnect in 5 seconds.')
+                logger.error(e)
+                logger.info('Trying to reconnect in 5 seconds.')
                 sleep(5)
             except KeyboardInterrupt:
-                LOGGER.info('Interrupted by user. Exiting...')
+                logger.info('Interrupted by user. Exiting...')
                 self.channel.close()
                 break
 
@@ -61,15 +59,26 @@ class MQConsumer:
         Connects to RabbitMQ, (re)declares the exchange for the service and a queue for the worker binding
         any alternative routing keys as needed.
         """
-        LOGGER.info(f'Connecting to RabbitMQ server: {{host: {self.connection_parameters.host}, '
-                    f'port: {self.connection_parameters.port}}}')
-        connection = pika.BlockingConnection(self.connection_parameters)
+        logger.info(f'Connecting to RabbitMQ server: {{host: {self.mq_config.host}, port: {self.mq_config.port}}}')
+        connection = BlockingConnection(ConnectionParameters(
+            host=self.mq_config.host,
+            port=self.mq_config.port,
+            credentials=credentials.PlainCredentials(
+                username=self.mq_config.username,
+                password=self.mq_config.password
+            ),
+            heartbeat=self.mq_config.heartbeat,
+            client_properties={
+                'connection_name': self.mq_config.connection_name
+            }
+        ))
         self.channel = connection.channel()
         self.channel.queue_declare(queue=self.queue_name)
-        self.channel.exchange_declare(exchange=self.exchange_name, exchange_type='direct')
+        self.channel.exchange_declare(exchange=self.mq_config.exchange, exchange_type='direct')
 
         for route in self.routing_keys:
-            self.channel.queue_bind(exchange=self.exchange_name, queue=self.queue_name, routing_key=route)
+            self.channel.queue_bind(exchange=self.mq_config.exchange, queue=self.queue_name,
+                                    routing_key=route)
 
         self.channel.basic_qos(prefetch_count=1)
         self.channel.basic_consume(queue=self.queue_name, on_message_callback=self._on_request)
@@ -98,20 +107,20 @@ class MQConsumer:
         Pass the request to the worker and return its response.
         """
         t1 = time()
-        LOGGER.info(f"Received request: {{id: {properties.correlation_id}, size: {getsizeof(body)} bytes}}")
+        logger.info(f"Received request: {{id: {properties.correlation_id}, size: {getsizeof(body)} bytes}}")
         try:
             request = json.loads(body)
-            request = RequestSchema().load(request)
             request = Request(**request)
             response = self.domain_detector.process_request(request)
         except Exception as e:
-            LOGGER.exception(e)
+            logger.exception(e)
             response = Response()
 
-        respose_size = getsizeof(response)
+        response = response.encode()
+        response_size = getsizeof(response)
 
-        self._respond(channel, method, properties, response.encode())
+        self._respond(channel, method, properties, response)
         t2 = time()
 
-        LOGGER.info(f"Request processed: {{id: {properties.correlation_id}, duration: {round(t2 - t1, 3)} s, "
-                    f"size: {respose_size} bytes}}")
+        logger.info(f"Request processed: {{id: {properties.correlation_id}, duration: {round(t2 - t1, 3)} s, "
+                    f"size: {response_size} bytes}}")
