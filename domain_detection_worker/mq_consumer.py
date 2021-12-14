@@ -1,5 +1,6 @@
 import json
 import logging
+import hashlib
 from sys import getsizeof
 from time import time, sleep
 
@@ -33,7 +34,8 @@ class MQConsumer:
         for language in self.domain_detector.model_config.languages:
             routing_keys.append(f'{self.mq_config.exchange}.{language}')
         self.routing_keys = sorted(routing_keys)
-        self.queue_name = self.mq_config.exchange  # TODO languages hash
+        hashed = hashlib.sha256(str(self.routing_keys).encode('utf-8')).hexdigest()[:8]
+        self.queue_name = f'{self.mq_config.exchange}_{hashed}'
 
     def start(self):
         """
