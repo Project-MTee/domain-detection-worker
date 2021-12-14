@@ -14,14 +14,14 @@ found [here](https://github.com/Project-MTee/domain-detection-scripts).
 The worker can be used by running the prebuilt docker images published alongside this repository. The container is
 designed to run in a CPU environment.
 
-The translation worker can be set up using the
+The worker can be set up using the
 [`domain-detection-worker`](https://ghcr.io/project-mtee/domain-detection-worker) image. This image contains only the
 environment setup and code to run the models, and is designed to be used in a CPU environment. The container should be
 configured using the following parameters:
 
 - Volumes:
     - `/app/models/` - the image does not contain the model files and these must be attached as described in
-      [`models/README.md`](https://github.com/project-mtee/domain-detection-worker/models).
+      [`models/README.md`](https://github.com/project-mtee/domain-detection-worker/tree/main/models).
 
 - Environment variables:
     - Variables that configure the connection to a [RabbitMQ message broker](https://www.rabbitmq.com/):
