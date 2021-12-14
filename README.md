@@ -46,8 +46,8 @@ By default, the container entrypoint is `main.py` without additional arguments, 
 For a manual setup, please refer to the included Dockerfile and the environment specification described in
 `requirements/requirements.txt`. Alternatively, the included `requirements/environment.yml` can be used to install the
 requirements using Conda. Additionally,
-[`models/README.md`](https://github.com/project-mtee/domain-detection-worker/models) describes how models should be set
-up correctly.
+[`models/README.md`](https://github.com/project-mtee/domain-detection-worker/tree/main/models) describes how models
+should be set up correctly.
 
 To initialize the sentence splitting functionality, the following command should be run before starting the application:
 
