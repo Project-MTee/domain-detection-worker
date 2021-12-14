@@ -35,17 +35,21 @@ class DomainDetector:
         return sentences
 
     def predict(self, sentences: list) -> str:
+        logger.debug(f"Input sentences: {sentences}")
         tokenized_sents = self.tokenizer(sentences,
                                          return_tensors="pt",
                                          truncation=True,
                                          padding='max_length',
                                          max_length=256)
         tokenized_sents.to(DEVICE)
-        
+
         predictions = self.model(**tokenized_sents)
         predictions = predictions[0].cpu().data.numpy().argmax(axis=1)
 
         counts = np.bincount(predictions)
+        label = self.model_config.labels[np.argmax(counts)]
+
+        logger.debug(f"Predicted domain: {label}")
 
         return self.model_config.labels[np.argmax(counts)]
 
