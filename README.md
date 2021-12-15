@@ -82,7 +82,7 @@ second. For more information, please refer to
 
 The worker consumes domain detection requests from a RabbitMQ message broker and responds with the detected domain name.
 The following format is compatible with
-the [text translation service](https://ghcr.io/project-mtee/text-translation-service).
+the [text translation service](https://ghcr.io/project-mtee/translation-api-service).
 
 Requests should be published with the following parameters:
 
