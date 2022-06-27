@@ -3,25 +3,27 @@
 A component that automatically detects the domain of a given text which can be used to route translation request to the
 correct domain-specific machine translation model. The worker processes domain detection requests via RabbitMQ.
 
-The model is a fine-tuned version of XLM-RoBERTa which is a large multi-lingual language model created by Facebook AI.
-We use model version available in [HuggingFace](https://huggingface.co/transformers/model_doc/xlmroberta.html).
+The model is a fine-tuned version of [XLM-RoBERTa](https://huggingface.co/transformers/model_doc/xlmroberta.html) which
+is a large multilingual language model created by Facebook AI.
 
 Instructions to train a new domain detection model can be
 found [here](https://github.com/Project-MTee/domain-detection-scripts).
 
 ## Setup
 
-The worker can be used by running the prebuilt docker images published alongside this repository. The container is
-designed to run in a CPU environment.
+The worker can be used by running the
+prebuilt [`domain-detection-worker`](https://ghcr.io/project-mtee/domain-detection-worker) docker image published
+alongside this repository. This image contains both the code and models (starting from version 1.2.0), and is designed
+to be used in a CPU environment. Additional details about configuring the models can be found
+in [`models/README.md`](https://github.com/project-mtee/domain-detection-worker/tree/main/models).
 
-The worker can be set up using the
-[`domain-detection-worker`](https://ghcr.io/project-mtee/domain-detection-worker) image. This image contains only the
-environment setup and code to run the models, and is designed to be used in a CPU environment. The container should be
-configured using the following parameters:
+When building the image, the following arguments are used:
 
-- Volumes:
-    - `/app/models/` - the image does not contain the model files and these must be attached as described in
-      [`models/README.md`](https://github.com/project-mtee/domain-detection-worker/tree/main/models).
+- `HF_MODEL` (optional) - a HuggingFace model
+  identifyer ([`tartuNLP/mtee-domain-detection`](https://huggingface.co/tartuNLP/mtee-domain-detection) by
+  default). The model is automatically downloaded from HuggingFace during the build phase.
+
+The container should be configured using the following parameters:
 
 - Environment variables:
     - Variables that configure the connection to a [RabbitMQ message broker](https://www.rabbitmq.com/):
@@ -29,37 +31,57 @@ configured using the following parameters:
         - `MQ_PASSWORD` - RabbitMQ user password
         - `MQ_HOST` - RabbitMQ host
         - `MQ_PORT` (optional) - RabbitMQ port (`5672` by default)
-        - `MQ_EXCHANGE` (optional) - RabbitMQ exchange name (`translation` by default)
-        - `MQ_CONNECTION_NAME` (optional) - friendly connection name (`Translation worker` by default)
+        - `MQ_EXCHANGE` (optional) - RabbitMQ exchange name (`domain-detection` by default)
+        - `MQ_CONNECTION_NAME` (optional) - friendly connection name (`Domain detection worker` by default)
         - `MQ_HEARTBEAT` (optional) - heartbeat interval (`60` seconds by default)
     - PyTorch-related variables:
-        - `MKL_NUM_THREADS` (optional) - number of threads used for intra-op parallelism by PyTorch. This defaults to
-          the number of CPU cores which may cause computational overhead when deployed on larger nodes. Alternatively,
+        - `MKL_NUM_THREADS` (optional) - number of threads used for intra-op parallelism by PyTorch. This defaults
+          to
+          the number of CPU cores which may cause computational overhead when deployed on larger nodes.
+          Alternatively,
           the `docker run` flag `--cpuset-cpus` can be used to control this. For more details, refer to
           the [performance and hardware requirements](#performance-and-hardware-requirements) section below.
+    - Other variables:
+        - `WORKER_MAX_INPUT_LENGTH` (optional) - the number of characters allowed per request (`2000` by default).
+          Longer requests will be processed but only the first characters will be considered. By increasing this limit,
+          more memory needs to be allocated to the container.
 
-By default, the container entrypoint is `main.py` without additional arguments, but these can be defined with the
-`COMMAND` option. For example by using `["--log-config", "logging/debug.ini"]` to enable debug level logging.
+- Optional runtime flags (`COMMAND` options):
+    - `--model-config` - path to the model config file (`models/config.yaml` by default), the default file is already
+      included and the format described
+      in [`models/README.md`](https://github.com/project-mtee/domain-detection-worker/tree/main/models).
+    - `--log-config` - path to logging config files (`logging/logging.ini` by default), `logging/debug.ini` can be used
+      for debug-level logging
+    - `--port` - port of the healthcheck probes (`8000` by default):
 
-## Manual setup
+- Endpoints for healthcheck probes:
+    - `/health/startup`
+    - `/health/readiness`
+    - `/health/liveness`
 
-For a manual setup, please refer to the included Dockerfile and the environment specification described in
-`requirements/requirements.txt`.
-Additionally, [`models/README.md`](https://github.com/project-mtee/domain-detection-worker/tree/main/models) describes
-how models should be set up correctly.
+### Building new images
 
-To initialize the sentence splitting functionality, the following command should be run before starting the application:
+When building the image, the model can be built with different targets. BuildKit should be enabled to skip any unused
+stages of the build.
 
-```python -c "import nltk; nltk.download(\"punkt\")"```
+- `worker-base` - the worker code without any models.
+- `worker-model` - a worker with an included model. Requires **one** of the following build-time arguments:
+    - `MODEL_IMAGE` - the image name where the model is copied from. For example any of
+      the [`domain-detection-model`](https://ghcr.io/project-mtee/domain-detection-model) images.
+    - `MODEL_CONFIG_FILE` - path to the model configuration file, for example `models/general.yaml`. The file must
+      contain the otherwise optional key `huggingface` to download the model or the build will fail.
 
-RabbitMQ and PyTorch parameters should be configured with environment variables as described above. The worker can be
-started with:
+- `env` - an intermediate build stage with all packages installed, but no code.
+- `model-dl` - images that only contain model files and configuration. The separate stage is used to cache this step and
+  speed up builds because HuggingFace downloads can be very slow compared to copying model files from a build stage.
+  Published at [`domain-detection-model`](https://ghcr.io/project-mtee/domain-detection-model). Alternatively, these can
+  be used as init containers to copy models over during startup, but this is quite slow and not recommended.
+- `model` - an alias for the model image, the value of `MODEL_IMAGE` or `model-dl` by default.
 
-```python main.py [--model-config models/config.yaml] [--log-config logging/logging.ini]```
+### Performance and hardware requirements
 
-## Performance and hardware requirements
-
-The worker loads the XLM-R model into memory. A conservative estimate is to have **6 GB of memory** available.
+The worker loads the XLM-R model into memory. An estimate is to have **6 GB of memory** available. More memory is
+required if the `WORKER_MAX_INPUT_LENGTH` variable is increased.
 
 The performance depends on the available CPU resources, however, this should be finetuned for the deployment
 infrastructure. By default, PyTorch will try to utilize all CPU cores to 100% and run as many threads as there are
@@ -78,7 +100,23 @@ around `16`. With optimal configuration and modern hardware, the worker should b
 second. For more information, please refer to
 [PyTorch documentation](https://pytorch.org/docs/stable/notes/cpu_threading_torchscript_inference.html).
 
-### Request Format
+### Manual / development setup
+
+For a manual setup, please refer to the included Dockerfile and the environment specification described in
+`requirements/requirements.txt`.
+Additionally, [`models/README.md`](https://github.com/project-mtee/domain-detection-worker/tree/main/models) describes
+how models should be set up correctly.
+
+To initialize the sentence splitting functionality, the following command should be run before starting the application:
+
+```python -c "import nltk; nltk.download(\"punkt\")"```
+
+RabbitMQ and PyTorch parameters should be configured with environment variables as described above. The worker can be
+started with:
+
+```python main.py [--model-config models/config.yaml --log-config logging/logging.ini --port 8000]```
+
+## Request Format
 
 The worker consumes domain detection requests from a RabbitMQ message broker and responds with the detected domain name.
 The following format is compatible with

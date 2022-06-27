@@ -19,7 +19,7 @@ class Response:
     """
     A dataclass that can be used to store responses and transfer them over the message queue if needed.
     """
-    domain: str = 'general'
+    domain: str
 
     def encode(self) -> bytes:
         return json.dumps(self, default=pydantic_encoder).encode()

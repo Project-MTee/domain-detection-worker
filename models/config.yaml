@@ -1,0 +1,13 @@
+huggingface: tartuNLP/mtee-domain-detection
+model_root: models/tartuNLP/mtee-domain-detection
+languages:
+  - et
+  - en
+  - ru
+  - de
+labels:
+  0: general
+  1: crisis
+  2: legal
+  3: military
+default_label_id: 0
