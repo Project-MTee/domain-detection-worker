@@ -53,13 +53,9 @@ class DomainDetector:
         """
         Split text into sentences.
         """
-        text = text[:worker_config.max_input_length]
         sentences = [sent.strip() for sent in sent_tokenize(text)]
         if len(sentences) == 0:
             return ['']
-
-        if len(text) > len(text[:worker_config.max_input_length]):
-            sentences = sentences[-1]
 
         return sentences
 
@@ -80,7 +76,7 @@ class DomainDetector:
 
         logger.debug(f"Predicted domain: {label}")
 
-        return self.labels[np.argmax(counts)]
+        return label
 
     def process_request(self, request: Request) -> Response:
         if type(request.text) == str:
@@ -88,6 +84,6 @@ class DomainDetector:
         else:
             sentences = self._sentence_tokenize(' '.join(request.text))
 
-        domain = self.predict(sentences)
+        domain = self.predict(sentences[:worker_config.max_input_sents])
 
         return Response(domain=domain)

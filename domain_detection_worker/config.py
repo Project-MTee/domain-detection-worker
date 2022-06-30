@@ -25,7 +25,7 @@ class WorkerConfig(BaseSettings):
     """
     Imports general workr configuration from environment variables
     """
-    max_input_length: int = 2000
+    max_input_sents: int = 15  # max lenght in sentences
 
     class Config:
         env_prefix = 'worker_'

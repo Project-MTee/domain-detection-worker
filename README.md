@@ -42,8 +42,8 @@ The container should be configured using the following parameters:
           the `docker run` flag `--cpuset-cpus` can be used to control this. For more details, refer to
           the [performance and hardware requirements](#performance-and-hardware-requirements) section below.
     - Other variables:
-        - `WORKER_MAX_INPUT_LENGTH` (optional) - the number of characters allowed per request (`2000` by default).
-          Longer requests will be processed but only the first characters will be considered. By increasing this limit,
+        - `WORKER_MAX_INPUT_SENTS` (optional) - the number of sentences processed per request (`20` by default).
+          Longer requests will be processed but only the first sentences will be considered. By increasing this limit,
           more memory needs to be allocated to the container.
 
 - Optional runtime flags (`COMMAND` options):
